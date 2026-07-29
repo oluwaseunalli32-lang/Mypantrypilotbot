@@ -1,98 +1,81 @@
 import os
 import sys
+import time
+import threading
 import telebot
 
-# 1. Fetch the token from environment variables
+# 1. Environment and Bot initialization
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     print("ERROR: BOT_TOKEN environment variable is missing!", file=sys.stderr)
     sys.exit(1)
 
-# 2. Initialize the bot
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Simple local database of recipes based on keywords
-RECIPES = [
-    {
-        "name": "Classic Egg Fried Rice",
-        "ingredients": ["egg", "rice", "onion", "soy sauce"],
-        "instructions": "1. Heat oil in a pan and sauté chopped onions.\n2. Push onions aside, crack eggs into the pan, and scramble.\n3. Add cooked rice and toss everything together.\n4. Drizzle with soy sauce and stir-fry on high heat for 2 minutes."
-    },
-    {
-        "name": "Quick Garlic Chicken Rice",
-        "ingredients": ["chicken", "rice", "garlic", "oil"],
-        "instructions": "1. Cut chicken into bite-sized pieces.\n2. Fry minced garlic in oil until fragrant, then add chicken and cook until brown.\n3. Stir in your cooked rice, season with salt/pepper, and serve hot."
-    },
-    {
-        "name": "Simple Tomato Beef Pasta",
-        "ingredients": ["beef", "tomato", "pasta", "onion"],
-        "instructions": "1. Boil pasta according to package instructions.\n2. Brown the ground beef with onions in a pan.\n3. Add chopped tomatoes or tomato sauce and simmer for 10 minutes.\n4. Toss the pasta into the sauce and mix well."
-    },
-    {
-        "name": "Cheesy Tomato Omelet",
-        "ingredients": ["egg", "tomato", "cheese"],
-        "instructions": "1. Whisk eggs in a bowl with a pinch of salt.\n2. Pour into a hot, greased skillet.\n3. Place sliced tomatoes and cheese on one half.\n4. Fold over and cook until the cheese is beautifully melted."
-    }
-]
+# 2. Path to your promo image
+IMAGE_PATH = "promo.jpg"
 
-# /start and /help command handler
+# 3. Message text to broadcast
+MESSAGE_TEXT = (
+    "✅ VIP has increased to 3.5% + 3📌\n\n"
+    "🪙REGISTER HERE ⏩⏩\n\n"
+    "https://app-web.mobiuspe-app.com/regist?code=earnmoney426\n\n\n"
+    "✅ We offer team leader salaries and up to 0.6% team commission. "
+    "Please contact us to apply for a team leader position. 🛒\n"
+    "Official channel link ⭐️\n\n"
+    "https://t.me/mobiuspayofficial1\n\n"
+    "Contact support ⭐️@puya1521"
+)
+
+# Set to keep track of unique active user chat IDs
+users = set()
+
+def send_promo(chat_id):
+    """Sends the promo image along with the caption text."""
+    try:
+        if os.path.exists(IMAGE_PATH):
+            with open(IMAGE_PATH, 'rb') as photo:
+                bot.send_photo(chat_id, photo, caption=MESSAGE_TEXT)
+        else:
+            # Fallback if the image file is missing
+            bot.send_message(chat_id, MESSAGE_TEXT, disable_web_page_preview=True)
+    except Exception as e:
+        print(f"Failed to send message to {chat_id}: {e}")
+
+# Command handler for /start and /help
 @bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    welcome_text = (
-        "<b>🧑‍🍳 Welcome to PantryPilot!</b>\n\n"
-        "Tell me what ingredients you have in your fridge (separated by commas), "
-        "and I will look up a simple recipe for you!\n\n"
-        "<i>Example: egg, rice, chicken</i>"
-    )
-    # Using parse_mode='HTML' to avoid Markdown rendering crashes
-    bot.reply_to(message, welcome_text, parse_mode='HTML')
+def start_handler(message):
+    chat_id = message.chat.id
+    users.add(chat_id)
+    send_promo(chat_id)
 
-# Handler for incoming ingredient text
+# Handler for any generic text messages
 @bot.message_handler(func=lambda message: True)
-def suggest_recipe(message):
-    # Standardize input text
-    user_input = message.text.lower()
-    user_ingredients = [ing.strip() for ing in user_input.split(",") if ing.strip()]
+def default_handler(message):
+    chat_id = message.chat.id
+    users.add(chat_id)
+    send_promo(chat_id)
+
+def broadcast_scheduler():
+    """Background worker loop that sends the message to all users every 2 hours."""
+    # 2 hours = 7200 seconds
+    interval = 7200 
     
-    if not user_ingredients:
-        bot.reply_to(message, "⚠️ Please enter at least one valid ingredient.", parse_mode='HTML')
-        return
-
-    matched_recipes = []
-
-    # Find matches where at least one user ingredient hits a recipe staple
-    for recipe in RECIPES:
-        match_count = sum(1 for ing in user_ingredients if ing in recipe["ingredients"])
-        if match_count > 0:
-            matched_recipes.append((recipe, match_count))
-
-    # Sort recipes by the highest number of ingredient matches
-    matched_recipes.sort(key=lambda x: x[1], reverse=True)
-
-    if not matched_recipes:
-        no_match_text = (
-            "<b>No exact match found!</b> 🧑‍🍳\n\n"
-            "Try listing basic staples like: <i>egg, rice, chicken, beef, tomato, or pasta</i>."
-        )
-        bot.reply_to(message, no_match_text, parse_mode='HTML')
-        return
-
-    # Build the response message safely using HTML
-    response = "<b>💡 Here is what you can make:</b>\n\n"
-    
-    # Show top 2 matching recipes max to keep it clean
-    for recipe, count in matched_recipes[:2]:
-        ingredients_list = ", ".join([f"<u>{i}</u>" for i in recipe["ingredients"]])
-        response += f"🍳 <b>{recipe['name']}</b>\n"
-        response += f"<b>Ingredients needed:</b> {ingredients_list}\n"
-        response += f"<b>Instructions:</b>\n{recipe['instructions']}\n\n"
-        response += "───────────────────\n\n"
-
-    bot.reply_to(message, response, parse_mode='HTML')
+    while True:
+        time.sleep(interval)
+        print(f"Broadcasting scheduled update to {len(users)} users...")
+        
+        # Iterate over a copy of the user set
+        for user_id in list(users):
+            send_promo(user_id)
 
 if __name__ == "__main__":
-    print("PantryPilot is launching...")
-    # infinity_polling keeps the bot running even if individual requests time out or hit errors
-    bot.infinity_polling()
+    print("Launching promotional bot worker...")
     
+    # Start the 2-hour scheduler in a separate daemon thread
+    scheduler_thread = threading.Thread(target=broadcast_scheduler, daemon=True)
+    scheduler_thread.start()
+    
+    # Start long-polling
+    bot.infinity_polling()
