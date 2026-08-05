@@ -13,37 +13,38 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# 1. CRYPTO PROMO MESSAGE
+# 1. GENERIC CRYPTO MESSAGE
 MESSAGE_TEXT = (
-    "🚀 <b>WELCOME TO MOBIUS PAY CRYPTO</b> 🚀\n\n"
-    "⚡ <b>VIP daily return increased to 3.5% + 3📌</b>\n\n"
-    "✅ Earn passive income daily on your crypto assets!\n"
-    "✅ Up to 0.6% team commission & monthly salaries for team leaders.\n\n"
-    "📢 <b>Official Channel:</b> https://t.me/mobiuspayofficial1\n"
-    "💬 <b>Support:</b> @puya1521\n\n"
-    "<i>Click the button below to register your account! 👇</i>"
+    "⚡ <b>WELCOME TO THE CRYPTO REWARDS BOT</b> ⚡\n\n"
+    "💎 <b>Daily Yield & Staking Rewards</b>\n"
+    "• High-yield daily returns on major crypto assets\n"
+    "• Instant automated daily payouts\n"
+    "• Earn team commissions & referral bonuses\n"
+    "• Safe, secure, and decentralized\n\n"
+    "<i>Select an option below to get started! 👇</i>"
 )
 
-# 2. CREATE INLINE BUTTON
+# 2. INLINE BUTTONS
 def get_crypto_keyboard():
     markup = InlineKeyboardMarkup()
-    register_btn = InlineKeyboardButton(
-        text="🪙 REGISTER NOW ⏩", 
-        url="https://app-web.mobiuspe-app.com/regist?code=earnmoney426"
-    )
-    markup.add(register_btn)
+    btn1 = InlineKeyboardButton(text="📈 View Daily Rates", callback_data="rates")
+    btn2 = InlineKeyboardButton(text="🪙 Start Staking", callback_data="stake")
+    btn3 = InlineKeyboardButton(text="👥 Referral Program", callback_data="referral")
+    markup.row(btn1, btn2)
+    markup.row(btn3)
     return markup
 
 users = set()
 
 def send_promo(chat_id):
-    """Sends the photo along with the crypto promo text and inline button."""
-    image_filename = "promo.jpg"
-    image_path = os.path.join(os.path.dirname(__file__), image_filename)
+    """Sends the photo along with the text and inline keyboard."""
+    # Build absolute path to ensure Render finds the image in the root directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    image_path = os.path.join(base_dir, "promo.jpg")
     keyboard = get_crypto_keyboard()
-    
-    try:
-        if os.path.exists(image_path):
+
+    if os.path.exists(image_path):
+        try:
             with open(image_path, 'rb') as photo:
                 bot.send_photo(
                     chat_id, 
@@ -52,27 +53,20 @@ def send_promo(chat_id):
                     parse_mode='HTML', 
                     reply_markup=keyboard
                 )
-        else:
-            print(f"File not found at {image_path}, sending text with button.")
-            bot.send_message(
-                chat_id, 
-                MESSAGE_TEXT, 
-                parse_mode='HTML', 
-                reply_markup=keyboard, 
-                disable_web_page_preview=True
-            )
-    except Exception as e:
-        print(f"Error sending photo to {chat_id}: {e}")
-        try:
-            bot.send_message(
-                chat_id, 
-                MESSAGE_TEXT, 
-                parse_mode='HTML', 
-                reply_markup=keyboard, 
-                disable_web_page_preview=True
-            )
-        except Exception as inner_e:
-            print(f"Failed to send text fallback: {inner_e}")
+                return
+        except Exception as e:
+            print(f"[ERROR] Failed sending photo: {e}", file=sys.stderr)
+    else:
+        print(f"[WARNING] image file not found at: {image_path}", file=sys.stderr)
+
+    # Fallback to text message if photo fails or doesn't exist
+    bot.send_message(
+        chat_id, 
+        MESSAGE_TEXT, 
+        parse_mode='HTML', 
+        reply_markup=keyboard, 
+        disable_web_page_preview=True
+    )
 
 @bot.message_handler(commands=['start', 'help'])
 def start_handler(message):
@@ -86,8 +80,21 @@ def default_handler(message):
     users.add(chat_id)
     send_promo(chat_id)
 
+@bot.callback_query_handler(func=lambda call: True)
+def callback_listener(call):
+    if call.data == "rates":
+        response = "📊 <b>Current Daily Yield Rates:</b>\n\n• USDT: 3.5% / day\n• BTC: 2.8% / day\n• ETH: 3.0% / day"
+    elif call.data == "stake":
+        response = "🪙 <b>Staking Active:</b> Your account is ready to receive daily crypto distributions."
+    elif call.data == "referral":
+        response = "👥 <b>Referral Rewards:</b> Earn up to 0.6% commission on your team's total volume."
+    else:
+        response = "Welcome to Crypto Rewards!"
+
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.message.chat.id, response, parse_mode='HTML')
+
 def broadcast_scheduler():
-    """Broadcasts to all active users every 2 hours."""
     interval = 7200 
     while True:
         time.sleep(interval)
@@ -96,9 +103,8 @@ def broadcast_scheduler():
             send_promo(user_id)
 
 if __name__ == "__main__":
-    print("Launching Crypto Promotional Bot...")
+    print("Launching Crypto Bot Worker...")
     
-    # Start background scheduler thread
     scheduler_thread = threading.Thread(target=broadcast_scheduler, daemon=True)
     scheduler_thread.start()
     
